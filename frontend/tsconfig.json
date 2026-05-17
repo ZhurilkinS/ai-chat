@@ -25,5 +25,5 @@
       "@shared/*": ["src/shared/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "vite-env.d.ts"]
 }

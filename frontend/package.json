@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:gh": "tsc -b && VITE_BASE_URL=/voice-chat/ vite build",
+    "build:gh": "tsc -b && VITE_BASE_URL=/ai-chat/ vite build",
     "deploy": "npm run build:gh && gh-pages -d dist",
     "lint": "eslint .",
     "preview": "vite preview"
