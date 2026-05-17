@@ -3,6 +3,49 @@ import { chatStorage } from '@/shared/utils/storage'
 import { sendMessageToChat, clearHistory } from '@/entities/chat'
 import { useAppDispatch, useAppSelector } from '@/shared/hooks/hooks'
 
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList
+  resultIndex: number
+}
+
+interface SpeechRecognitionResultList {
+  length: number
+  item(index: number): SpeechRecognitionResult
+  [index: number]: SpeechRecognitionResult
+}
+
+interface SpeechRecognitionResult {
+  isFinal: boolean
+  length: number
+  item(index: number): SpeechRecognitionAlternative
+  [index: number]: SpeechRecognitionAlternative
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string
+  confidence: number
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  start(): void
+  stop(): void
+  abort(): void
+  onstart: ((this: SpeechRecognition, ev: Event) => void) | null
+  onend: ((this: SpeechRecognition, ev: Event) => void) | null
+  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => void) | null
+  onerror: ((this: SpeechRecognition, ev: Event) => void) | null
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition
+    webkitSpeechRecognition: new () => SpeechRecognition
+  }
+}
+
 export const LandingPage = () => {
   const dispatch = useAppDispatch()
   const { messages: reduxMessages, isLoading } = useAppSelector((state) => state.chat)
@@ -10,6 +53,7 @@ export const LandingPage = () => {
   const [isRecording, setIsRecording] = useState(false)
   const [hasMessages, setHasMessages] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
 
   const messages = reduxMessages.length > 0 ? reduxMessages : (chatStorage.loadMessages() || [])
 
@@ -22,6 +66,39 @@ export const LandingPage = () => {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages, isLoading])
+
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition()
+        recognitionRef.current.continuous = false
+        recognitionRef.current.interimResults = false
+        recognitionRef.current.lang = 'ru-RU'
+
+        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+          const transcript = event.results[event.resultIndex][0].transcript
+          setInputValue(transcript)
+          setIsRecording(false)
+        }
+
+        recognitionRef.current.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error)
+          setIsRecording(false)
+        }
+
+        recognitionRef.current.onend = () => {
+          setIsRecording(false)
+        }
+      }
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort()
+      }
+    }
+  }, [])
 
   const handleSend = async () => {
     if (inputValue.trim() && !isLoading) {
@@ -48,6 +125,24 @@ export const LandingPage = () => {
       minute: '2-digit',
       hour12: false,
     })
+  }
+
+  const handleMicClick = () => {
+    if (!recognitionRef.current) {
+      alert('Голосовой ввод не поддерживается в вашем браузере. Попробуйте Chrome или Edge.')
+      return
+    }
+
+    if (isRecording) {
+      recognitionRef.current.stop()
+    } else {
+      try {
+        recognitionRef.current.start()
+        setIsRecording(true)
+      } catch (error) {
+        console.error('Error starting speech recognition:', error)
+      }
+    }
   }
 
   return (
@@ -132,11 +227,11 @@ export const LandingPage = () => {
         <div className="shrink-0 h-14">
           <div className="flex items-center h-full bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl pl-4 hover:bg-white/10 hover:border-white/20 transition-all duration-200">
             <button
-              onClick={() => setIsRecording(!isRecording)}
+              onClick={handleMicClick}
               className={`p-2 rounded-lg transition-colors ${
-                isRecording ? 'bg-red-500/20' : 'hover:bg-white/10'
+                isRecording ? 'bg-red-500/20 animate-pulse' : 'hover:bg-white/10'
               }`}
-              title="Voice input"
+              title={isRecording ? 'Stop recording' : 'Voice input'}
             >
               <svg
                 className={`w-5 h-5 ${
@@ -160,7 +255,7 @@ export const LandingPage = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Ask whatever you want"
+              placeholder={isRecording ? 'Listening...' : 'Ask whatever you want'}
               className="flex-1 bg-transparent border-none outline-none text-white placeholder-slate-500 px-3 text-base md:text-lg"
             />
 
